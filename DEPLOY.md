@@ -32,11 +32,11 @@ DEPLOY.md                              ← 本檔
 3. 選 **Private**(私人),不用勾 README,按 **Create repository**。
 4. 上傳檔案(兩種方法擇一):
 
-   **方法 A — 網頁拖拉(最簡單):**
+   **方法 A — 網頁拖拉(最簡單,建議):**
    - 在新 repo 頁面點 **uploading an existing file**。
-   - 把 `index.html`、`fetch_fred.py`、`data.json`、`README.md`、`DEPLOY.md` **全部拖進去**。
-   - ⚠️ `.github/workflows/update-fred-data.yml` 這個有資料夾路徑,網頁拖拉有時會掉路徑。請在上傳框上方的檔名欄手動輸入 `.github/workflows/update-fred-data.yml`(含斜線),再貼上內容。
+   - 把這 **5 個檔案**拖進去:`index.html`、`fetch_fred.py`、`data.json`、`README.md`、`DEPLOY.md`。
    - 按 **Commit changes**。
+   - ⚠️ **先不要管** `.github/workflows/update-fred-data.yml`(有資料夾路徑,拖拉容易掉)。它在**第 3 步用 GitHub 內建編輯器建立**,保證路徑正確。
 
    **方法 B — 用 Git 指令(若你慣用):**
    ```bash
@@ -73,13 +73,25 @@ DEPLOY.md                              ← 本檔
 
 ---
 
-## 第 3 步 — 啟用自動更新並先跑一次
+## 第 3 步 — 建立自動更新並先跑一次
+
+> 這一步用 GitHub 內建編輯器建立排程檔,**保證 `.github/workflows/` 路徑正確**(避免拖拉掉路徑)。
 
 1. repo 頁面上方點 **Actions** 分頁。
-2. 若看到提示 *"Workflows aren't being run on this forked repository"* 或要你啟用,按 **I understand my workflows, go ahead and enable them**。
-3. 左側點 **Update FRED data**,右上 **Run workflow → Run workflow**(綠色按鈕)。
-4. 等約 1–2 分鐘,出現綠色勾勾 ✓ 代表成功,`data.json` 已更新成最新資料。
+2. 你會看到一頁 **「Get started with GitHub Actions」**(列出 Jekyll / Python / Deploy 等一堆範本)。
+   **這是正常的** —— 因為這個 repo 還沒有任何排程檔,GitHub 就顯示範本選單。**不要選任何範本。**
+3. 點最上面那行藍字 **「set up a workflow yourself →」**(或搜尋框上方的 *set up a workflow yourself*)。
+4. 進入一個程式碼編輯器,預設檔名是 `main.yml`。
+   - 把檔名改成:**`update-fred-data.yml`**
+   - 把編輯器裡的**範例內容全部刪掉**。
+   - 開啟提供的 `.github/workflows/update-fred-data.yml`,**全選複製、貼進編輯器**。
+5. 右上角按 **Commit changes… → Commit changes**(直接 commit 到 main)。
+   - GitHub 會自動把它存到 `.github/workflows/update-fred-data.yml`,路徑一定正確。
+6. 回到 **Actions** 分頁,現在左側會出現 **Update FRED data**。點它,右上 **Run workflow → Run workflow**(綠色按鈕)。
+7. 等約 1–2 分鐘,出現綠色勾勾 ✓ 代表成功,`data.json` 已更新成最新資料。
    - 之後它會 **每個工作日台灣早上自動跑**(UTC 22:30),不用再管。
+
+> 之後若再點 Actions 還是看到範本選單,代表排程檔沒建成功 —— 重做第 3、4 步,確認檔名是 `update-fred-data.yml` 且有 commit 到 main。
 
 ---
 
@@ -135,6 +147,7 @@ DEPLOY.md                              ← 本檔
 |---|---|
 | Vercel 網頁**一片空白** | 多半是圖表庫(ECharts)沒載入。確認有網路、稍等重整;網頁已內建備援來源(jsdelivr→unpkg)。 |
 | 輸入密碼後**沒反應/說不支援加密** | 密碼閘需要 **HTTPS**。Vercel 與 Squarespace 都是 HTTPS,沒問題;**不要**直接用「開啟本機檔案(file://)」測試。 |
+| 點 Actions 看到**範本選單(Get started with GitHub Actions)** | 正常畫面,代表 repo 還沒有排程檔。**不要選範本**,點上方 *set up a workflow yourself* 自己貼(見第 3 步)。若已照做還是出現 → 排程檔沒 commit 成功,重做第 3 步。 |
 | Actions **紅色 ✗ 失敗** | 點進去看錯誤。最常見是 `FRED_API_KEY` 沒設或貼錯 → 重設第 2 步。Yahoo 偶爾擋雲端 IP 會讓 MOVE/標普暫缺,但程式有備援、不會整個失敗。 |
 | 網頁有圖但**資料是舊的** | 確認 Actions 有成功跑且有 commit `data.json`;Vercel 會自動重部署。可在 Actions 手動再 Run 一次。 |
 | Squarespace 貼上後**跑版/被截斷** | 確認是貼到 **Page Header Code Injection**(頁面層級),不是 code block;必要時用 `.txt` 方式貼。 |
