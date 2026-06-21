@@ -165,13 +165,27 @@ footer a{color:var(--muted)}
 .gatebox h1.grad{animation-duration:14s}
 
 /* alert banners */
-.alerts{display:flex;flex-direction:column;gap:8px;margin:2px 0 20px}
-.alert-banner{display:flex;align-items:flex-start;gap:10px;padding:11px 15px;border-radius:9px;font-size:12.5px;line-height:1.55;border:1px solid;animation:fade .4s ease}
+.alerts{display:flex;flex-direction:column;gap:8px;margin:2px 0 20px}.alert-banner{display:flex;align-items:flex-start;gap:10px;padding:11px 15px;border-radius:9px;font-size:12.5px;line-height:1.55;border:1px solid;animation:fade .4s ease}
 .alert-banner .ic{font-size:14px;line-height:1.3;flex:0 0 auto}
 .alert-banner.alert{background:rgba(246,70,93,.09);border-color:rgba(246,70,93,.42);color:#f9a8b6}
 .alert-banner.warn{background:rgba(245,166,35,.08);border-color:rgba(245,166,35,.38);color:#f3cd8a}
 .alert-banner.info{background:rgba(59,130,246,.07);border-color:rgba(59,130,246,.32);color:#a6c8ff}
 .alert-banner b{font-weight:700;color:#fff}
+
+/* in-dashboard "How to read" help layer (toggle) */
+.help-toggle{margin-left:auto;background:rgba(245,166,35,.08);border:1px solid rgba(245,166,35,.3);
+  color:var(--amber);font-family:var(--sans);font-size:12px;font-weight:600;padding:7px 13px;border-radius:8px;
+  cursor:pointer;transition:.15s;white-space:nowrap;align-self:center;margin-bottom:6px}
+.help-toggle .en{color:var(--dim);font-weight:500;font-size:10px;margin-left:4px}
+.help-toggle:hover{background:rgba(245,166,35,.15)}
+.help-toggle.on{background:var(--accent);color:#1a1205;border-color:var(--accent)}
+.help-toggle.on .en{color:rgba(26,18,5,.65)}
+.help-text{display:none;margin:-2px 0 13px;padding:9px 13px;border-radius:8px;
+  background:rgba(245,166,35,.06);border:1px solid rgba(245,166,35,.22);
+  font-size:11.5px;line-height:1.65;color:var(--muted)}
+body.help-on .help-text{display:block;animation:fade .3s ease}
+.help-text .hk{color:var(--accent);font-weight:700;font-size:9.5px;letter-spacing:.04em;margin-right:3px}
+.help-text .sep{color:var(--border2);margin:0 5px}
 
 @media(max-width:1080px){ .col-7-5{grid-template-columns:1fr} .g3{grid-template-columns:1fr} }
 @media(max-width:720px){ .g2{grid-template-columns:1fr} .kpis{grid-template-columns:repeat(2,1fr)} #app{padding:0 13px 50px} .brand h1{font-size:18px} }
@@ -215,6 +229,7 @@ footer a{color:var(--muted)}
     <button class="tab" data-tab="credit">信用利差<span class="en">Credit</span></button>
     <button class="tab" data-tab="real">實質殖利率·波動<span class="en">Real Yields &amp; Vol</span></button>
     <button class="tab" data-tab="fci">金融狀況<span class="en">Financial Conditions</span></button>
+    <button class="help-toggle" id="helpToggle" title="開啟逐欄釋義說明 · plain-language explainers">💡 讀法<span class="en">How to read</span></button>
   </nav>
 
   <!-- ===== OVERVIEW ===== -->
@@ -601,12 +616,55 @@ function renderAlerts(){
 }
 
 const built={};
+/* ---------- "How to read" help layer ---------- */
+const H=(plain,watch,impl)=>`<span class="hk">釋義</span>${plain}<span class="sep">·</span><span class="hk">觀察</span>${watch}<span class="sep">·</span><span class="hk">研判</span>${impl}`;
+const HELP={
+  gaugeChart:H('把信用、利率、波動、流動性壓成一個 0–100 分數','&gt;70 壓力 / 50–70 收緊 / &lt;30 寬鬆','分數高且上升 → 對風險資產偏防禦,Core book 做資金成本壓測'),
+  regimeChart:H('用「曲線方向 × 信用方向」定位現在的市場體制','右下=金髮女孩(健康)、右上=避險(最危險)、中心=過渡','落入避險象限(趨陡+信用走闊)是衰退/危機動態 → 降曝險'),
+  corrgrid:H('股市與各資產近 30 天怎麼一起動','SPX×HY 由負轉零=背離;SPX×實質利率強負=利率敏感','利率敏感體制下,長存續期科技對殖利率尖升最脆弱'),
+  sigbody:H('所有指標的當前水準、近期變動、相對歷史的位置','燈號紅 / 百分位(熱力圖)接近 100 = 偏緊或壓力','一眼掃出哪個區塊在亮紅燈'),
+  'ch-spreads':H('短率與長率的差;跌破 0 叫「倒掛」','倒掛 = 歷史上領先衰退約 12–18 個月','倒掛本身不是賣點,倒掛「修復」才是末段警訊'),
+  'ch-yields':H('各天期公債利率水準','整條往上 = 資金成本上升','利率上行對高估值/長存續期股票是逆風'),
+  'ch-fly':H('曲線長端斜率與彎曲程度','形狀變化反映供需與期限溢酬','進階輔助指標,判斷曲線驅動來源'),
+  'disinv-box':H('2s10s 現在倒掛還是正斜率、距上次穿越多久','由倒掛「剛轉正」= 週期末段','歷史上常出現在股市回撤之前'),
+  'ch-oas':H('公司債比公債多付的利息(信用風險溢酬)','走闊 = 市場要更多補償 = 信用轉壞','信用是股票的 senior claim,轉折常領先股市'),
+  'ch-hyccc':H('高收益整體 vs 最弱(CCC)的利差','CCC 相對 HY 異常走闊 = 壓力集中弱者','最弱 cohort 先出事,常是 canary'),
+  'ch-disp':H('最弱(CCC)與次弱(BB)債券的利差差距','走闊 = 指數平靜但尾部有壓力','「指數平靜、尾部冒煙」的早期警訊'),
+  'ch-diverge':H('股市與高收益利差(反向)疊在一起','股創高但利差不確認 = 背離','非確認警訊,股票動能可能撐不住'),
+  'ch-real':H('扣掉通膨後的「真實」利率','急升,尤其變動速度快','直接打擊高估值/長存續期成長股'),
+  'ch-bei':H('市場預期的通膨','名目 = 實質 + 通膨,拆解利率為何漲','判斷利率上行是成長還是通膨驅動'),
+  'ch-vix':H('VIX = 股票恐慌、MOVE = 利率市場恐慌','MOVE 飆 = 資金成本不確定性升','MOVE 亮紅對長存續期部位是直接風險'),
+  'ch-realmom':H('實質利率近一個月變動多少','快速上升','變動「速度」比絕對水準更傷成長股'),
+  'ch-termprem':H('長期利率拆成「預期利率路徑」+「期限溢酬」','期限溢酬(amber 帶)變厚','上行若來自溢酬 = 長存續期純逆風;來自預期利率較中性'),
+  'ch-nfci':H('聯儲綜合的全國金融鬆緊指數','&gt;0 = 比長期平均更緊','作為自建綜合儀表的對照基準'),
+  'ch-stress':H('金融系統壓力溫度計','&gt;0 = 壓力高於常態','飆升代表系統性壓力上升'),
+  'ch-rrp':H('停在聯儲的隔夜現金緩衝','抽乾接近零 = 緩衝耗盡','緩衝沒了,流動性對發債/TGA 重建更敏感'),
+  'ch-sofr':H('附擔保隔夜利率相對基準利率的高低','季底跳升或持續為正 = 資金緊俏','回購市場壓力的早警(如 2019/09 事件)'),
+  'ch-usd':H('美元對一籃子貨幣的強弱','急升 = 全球流動性收緊','強美元對跨國半導體 = 匯損 + 估值雙殺'),
+  'ch-comp':H('上面那個 0–100 綜合分數的時間走勢','往 70 走 = 金融狀況趨緊','看分數的方向與加速度,而非單點'),
+};
+function injectHelp(){
+  for(const id in HELP){
+    const el=document.getElementById(id); if(!el) continue;
+    const card=el.closest('.card'); if(!card || card.querySelector('.help-text')) continue;
+    const block=document.createElement('div'); block.className='help-text'; block.innerHTML=HELP[id];
+    const note=card.querySelector('.note');
+    (note||card.querySelector('h3')).insertAdjacentElement('afterend', block);
+  }
+}
+function wireHelpToggle(){
+  const t=document.getElementById('helpToggle'); if(!t) return;
+  if(sessionStorage.getItem('fcm_help')==='1'){ document.body.classList.add('help-on'); t.classList.add('on'); }
+  t.onclick=()=>{ const on=document.body.classList.toggle('help-on'); t.classList.toggle('on',on); sessionStorage.setItem('fcm_help',on?'1':'0'); };
+}
+
 function build(){
   // header meta
   document.getElementById('m-upd').textContent=D.generated_utc||'—';
   document.getElementById('m-rng').textContent=(D.dates[0]||'')+' → '+(D.dates[D.dates.length-1]||'');
   document.getElementById('m-src').textContent=D.source||'';
   renderAlerts();
+  injectHelp(); wireHelpToggle();
   // tabs
   document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
     document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
