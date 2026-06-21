@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>如何閱讀 · 金融狀況/風險體制監測 — 客戶導覽 Client Primer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#080b11; --panel:#10151f; --panel2:#141a26; --border:#1f2735; --border2:#283242;
+  --text:#e7eaf2; --muted:#9aa4ba; --dim:#6b7589;
+  --green:#26c281; --red:#f6465d; --amber:#f5a623; --blue:#3b82f6; --teal:#2dd4bf; --accent:#f5a623;
+  --mono:'JetBrains Mono',ui-monospace,monospace;
+  --sans:'Inter','Noto Sans TC',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;line-height:1.7;-webkit-font-smoothing:antialiased}
+body{background:radial-gradient(1100px 520px at 80% -8%, rgba(59,130,246,.06), transparent 60%),
+  radial-gradient(900px 460px at 0% 0%, rgba(245,166,35,.04), transparent 55%), var(--bg);
+  max-width:880px;margin:0 auto;padding:42px 30px 70px}
+.grad{background:linear-gradient(90deg,#f5a623,#26c281,#22d3ee,#3b82f6,#a78bfa,#f6465d,#f5a623);
+  background-size:280% 100%;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;
+  animation:flow 14s linear infinite}
+@keyframes flow{to{background-position:280% 50%}}
+header{border-bottom:1px solid var(--border);padding-bottom:20px;margin-bottom:26px}
+.kick{font-size:10.5px;letter-spacing:.26em;color:var(--accent);font-weight:600;margin-bottom:8px}
+h1{font-size:25px;font-weight:700;letter-spacing:-.01em;line-height:1.25}
+h1 .en{display:block;color:var(--muted);font-weight:500;font-size:15px;margin-top:5px;letter-spacing:0}
+.lead{color:var(--muted);font-size:14.5px;margin-top:14px;line-height:1.75}
+h2{font-size:16px;font-weight:700;margin:30px 0 12px;display:flex;align-items:center;gap:9px}
+h2 .en{color:var(--dim);font-weight:500;font-size:12px}
+h2::before{content:'';width:3px;height:16px;background:var(--accent);border-radius:2px;display:inline-block}
+p{margin-bottom:12px}
+.card{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--border);border-radius:11px;padding:16px 18px;margin-bottom:13px}
+.five{display:flex;gap:13px;align-items:flex-start;margin-bottom:13px}
+.five .n{flex:0 0 30px;height:30px;border-radius:8px;background:rgba(245,166,35,.13);color:var(--accent);font-family:var(--mono);font-weight:600;font-size:14px;display:flex;align-items:center;justify-content:center;margin-top:2px}
+.five .b{flex:1}
+.five .t{font-weight:700;font-size:14px;margin-bottom:3px}
+.five .t .en{color:var(--dim);font-weight:500;font-size:11.5px;margin-left:6px}
+.five .d{color:var(--muted);font-size:13px;line-height:1.65}
+table{width:100%;border-collapse:collapse;font-size:13px;margin:6px 0 4px}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--border)}
+th{color:var(--dim);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;font-weight:600}
+td:first-child{white-space:nowrap;font-weight:600}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:7px;vertical-align:middle}
+.g{background:var(--green)} .a{background:var(--amber)} .r{background:var(--red)} .n{background:var(--muted)}
+.regime{display:grid;grid-template-columns:1fr 1fr;gap:11px;margin:4px 0}
+.q{border:1px solid var(--border2);border-radius:10px;padding:13px 15px;border-left-width:3px}
+.q.green{border-left-color:var(--green)} .q.teal{border-left-color:var(--teal)}
+.q.amber{border-left-color:var(--amber)} .q.red{border-left-color:var(--red)}
+.q .qt{font-weight:700;font-size:13.5px;margin-bottom:3px}
+.q .qd{color:var(--muted);font-size:12px;line-height:1.6}
+.example{background:rgba(59,130,246,.05);border:1px solid rgba(59,130,246,.22);border-radius:11px;padding:16px 18px}
+.example .step{display:flex;gap:11px;margin:9px 0;font-size:13px;color:var(--muted);line-height:1.6}
+.example .step b{color:var(--text)}
+.example .ar{color:var(--blue);font-family:var(--mono);flex:0 0 auto}
+.warn{border-left:3px solid var(--red);background:rgba(246,70,93,.05);padding:13px 16px;border-radius:0 10px 10px 0;color:var(--muted);font-size:13px;line-height:1.7}
+.warn b{color:var(--text)}
+.gloss{display:grid;grid-template-columns:1fr 1fr;gap:10px 22px;font-size:12.5px}
+.gloss .term{color:var(--text);font-weight:600}
+.gloss .term .en{color:var(--dim);font-weight:400;font-size:11px;margin-left:5px}
+.gloss .def{color:var(--muted);line-height:1.55;margin-top:1px}
+footer{margin-top:32px;padding-top:16px;border-top:1px solid var(--border);color:var(--dim);font-size:11.5px;line-height:1.7}
+@media(max-width:680px){ .regime,.gloss{grid-template-columns:1fr} body{padding:28px 18px 50px} h1{font-size:21px} }
+@media(prefers-reduced-motion:reduce){ .grad{animation:none;background-position:0 50%} }
+
+/* ---- print: ink-friendly white ---- */
+@media print{
+  @page{margin:14mm}
+  html,body{background:#fff!important;color:#111!important;max-width:none;padding:0;font-size:11pt}
+  .grad{-webkit-text-fill-color:#b8860b!important;color:#b8860b!important;animation:none}
+  .kick,h2 .en,.five .t .en,.gloss .term .en{color:#888!important}
+  .lead,.five .d,.q .qd,.example .step,.warn,.gloss .def,p{color:#333!important}
+  h1,h2,.five .t,td:first-child,.gloss .term,.q .qt,.example .step b,.warn b{color:#111!important}
+  .card,.q,.example,.warn{background:#fff!important;border-color:#ccc!important;break-inside:avoid}
+  h2{break-after:avoid} header{border-color:#ccc}
+  .five .n{background:#f1e4c4!important;color:#9a6b00!important}
+  th,td{border-color:#ddd!important} th{color:#666!important}
+  footer{color:#888!important;border-color:#ccc}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="kick">客戶導覽 · CLIENT PRIMER</div>
+  <h1><span class="grad">如何閱讀這個儀表板</span><span class="en">How to read the Financial Conditions / Risk-Regime Monitor</span></h1>
+  <p class="lead">這個儀表板把<b style="color:var(--text)">債券、信用、利率與流動性</b>市場的訊號,整理成一個判斷「現在市場處於什麼體制、風險在累積還是緩解」的<b style="color:var(--text)">防禦過濾器</b>。它幫助我們確認或質疑股市的走勢、提早標示尾部風險。它<b style="color:var(--text)">不是</b>預測短線漲跌的水晶球 —— 領先時間長且不固定。本頁以淺顯方式帶你看懂主要區塊。</p>
+</header>
+
+<h2>先看這 5 個 <span class="en">Start with these five</span></h2>
+
+<div class="five"><div class="n">1</div><div class="b">
+  <div class="t">綜合風險儀表 <span class="en">Composite Risk Gauge</span></div>
+  <div class="d">一個 <b>0–100 的總分</b>,把信用、利率、波動、流動性壓成單一數字。<b style="color:var(--green)">低(&lt;30)= 寬鬆</b>、<b style="color:var(--amber)">中(50–70)= 收緊</b>、<b style="color:var(--red)">高(&gt;70)= 壓力</b>。分數高且上升時,我們對風險資產偏防禦。</div>
+</div></div>
+
+<div class="five"><div class="n">2</div><div class="b">
+  <div class="t">風險體制矩陣 <span class="en">Curve × Credit Regime</span></div>
+  <div class="d">用「殖利率曲線方向 × 信用利差方向」定位現在的市場「天氣」。亮點落在哪個象限,就代表處於哪種體制(見下方四象限)。可以按播放鍵回放近半年的走勢。</div>
+</div></div>
+
+<div class="five"><div class="n">3</div><div class="b">
+  <div class="t">頂部警示橫幅 <span class="en">Alert Banners</span></div>
+  <div class="d">當某個「非線性」的破壞條件被觸發(例如利率波動單週飆升、曲線倒掛修復、信用最弱一群異常走闊),系統會在最上方用一句話<b>主動點名</b>,把數字變成可讀的洞察。沒有橫幅 = 各門檻都在正常範圍。</div>
+</div></div>
+
+<div class="five"><div class="n">4</div><div class="b">
+  <div class="t">信用利差 <span class="en">Credit Spreads (OAS)</span></div>
+  <div class="d">公司債比公債<b>多付的利息</b>,代表市場要求的信用風險補償。<b style="color:var(--red)">走闊 = 市場轉趨謹慎</b>。信用是股票的「優先求償權」,它的轉折點常常<b>領先股市</b>。</div>
+</div></div>
+
+<div class="five"><div class="n">5</div><div class="b">
+  <div class="t">滾動相關性 <span class="en">Rolling Correlation</span></div>
+  <div class="d">股市近期與信用、實質利率怎麼<b>一起動</b>。當股市和信用利差的「正常負相關」打破,或股市與實質利率呈現高度負相關,常是<b>體制轉換的早期預警</b>。</div>
+</div></div>
+
+<h2>紅綠燈讀法 <span class="en">Traffic-light reading</span></h2>
+<div class="card" style="padding:6px 18px">
+<table>
+<thead><tr><th>燈號</th><th>代表</th><th>大致含意</th></tr></thead>
+<tbody>
+<tr><td><span class="dot g"></span>綠</td><td>寬鬆 / 低風險</td><td>流動性與信用環境支持風險資產,環境平靜。</td></tr>
+<tr><td><span class="dot a"></span>黃</td><td>收緊 / 留意</td><td>金融狀況轉緊或出現背離,尾部風險升高,提高警覺。</td></tr>
+<tr><td><span class="dot r"></span>紅</td><td>壓力 / 避險</td><td>信用與利率明顯收緊,對風險資產偏防禦。</td></tr>
+</tbody>
+</table>
+</div>
+<p style="color:var(--dim);font-size:12px;margin-top:-2px">表中每個指標的「百分位」欄位也有顏色:越接近 <b style="color:var(--red)">紅(100)</b>= 越緊/越有壓力,越接近 <b style="color:var(--green)">綠(0)</b>= 越寬鬆。</p>
+
+<h2>四種市場體制 <span class="en">The four regimes</span></h2>
+<div class="regime">
+  <div class="q green"><div class="qt">復甦 / 再通膨 <span style="color:var(--dim);font-weight:500;font-size:11px">Reflation</span></div><div class="qd">曲線趨陡 + 信用收窄。早循環復甦,通常對風險資產有利。</div></div>
+  <div class="q teal"><div class="qt">金髮女孩 / 中循環 <span style="color:var(--dim);font-weight:500;font-size:11px">Goldilocks</span></div><div class="qd">曲線趨平 + 信用收窄。央行在控制中、信用平靜,健康但成熟的環境。</div></div>
+  <div class="q amber"><div class="qt">循環末段 <span style="color:var(--dim);font-weight:500;font-size:11px">Late-cycle</span></div><div class="qd">曲線趨平 + 信用走闊。壓力開始醞釀,提高警覺。</div></div>
+  <div class="q red"><div class="qt">避險 / 衰退 <span style="color:var(--dim);font-weight:500;font-size:11px">Risk-off</span></div><div class="qd">曲線趨陡 + 信用走闊。<b style="color:var(--text)">最危險</b>的象限 —— 降息預期下前端崩塌、同時信用爆走的衰退/危機動態。</div></div>
+</div>
+<p style="color:var(--dim);font-size:12px;margin-top:4px">中心有一個「中性緩衝區」:當變動很小、方向不明時標示為「過渡期」,避免在平靜時頻繁誤判。</p>
+
+<h2>一個實例:壓力事件前後會看到什麼 <span class="en">What a stress event looks like</span></h2>
+<div class="example">
+<p style="color:var(--muted);font-size:12.5px;margin-bottom:8px">(示意,說明指標如何一起變化)當市場由平靜轉向壓力時,儀表板通常會依序出現:</p>
+<div class="step"><span class="ar">→</span><div><b>實質殖利率動能轉紅、MOVE 上升</b> —— 利率市場先躁動,長存續期/高估值股票最先承壓。</div></div>
+<div class="step"><span class="ar">→</span><div><b>信用利差開始走闊</b>,且<b>最弱一群(CCC)的離散度</b>先擴大 —— 「指數平靜、尾部冒煙」。</div></div>
+<div class="step"><span class="ar">→</span><div><b>體制矩陣的亮點移向避險象限</b>,綜合儀表分數升向收緊/壓力區。</div></div>
+<div class="step"><span class="ar">→</span><div><b>頂部跳出警示橫幅</b>,把上述變化用文字點名 —— 這時防禦動作(減曝險、壓測資金成本)就有了依據。</div></div>
+</div>
+
+<h2>這不是什麼 <span class="en">What it is NOT</span></h2>
+<div class="warn">
+<b>不是擇時工具。</b> 這些訊號的領先時間長且不固定,不能拿來精準預測短線買賣點。<b>不是單一指標說了算。</b> 價值在於多個訊號<b>互相印證或背離</b>。在強勁的多頭(melt-up)中,信用與股票也可能短暫脫鉤。它是一個<b>風險與體制的判斷框架</b>,輔助決策,<b>非投資建議</b>。
+</div>
+
+<h2>名詞小辭典 <span class="en">Mini glossary</span></h2>
+<div class="card">
+<div class="gloss">
+  <div><div class="term">信用利差 / OAS</div><div class="def">公司債相對公債多付的利息,衡量信用風險。走闊=轉壞。</div></div>
+  <div><div class="term">殖利率曲線 <span class="en">Yield Curve</span></div><div class="def">短率與長率的關係;短率高於長率(跌破 0)稱「倒掛」,常領先衰退。</div></div>
+  <div><div class="term">倒掛修復 <span class="en">Dis-inversion</span></div><div class="def">曲線由倒掛轉回正斜率,歷史上常出現在回撤之前的末段。</div></div>
+  <div><div class="term">實質殖利率 <span class="en">Real Yield</span></div><div class="def">扣掉通膨後的真實利率;急升直接打擊高估值成長股。</div></div>
+  <div><div class="term">期限溢酬 <span class="en">Term Premium</span></div><div class="def">持有長債、承擔不確定性所要求的額外補償;上升對長存續期是逆風。</div></div>
+  <div><div class="term">MOVE 指數</div><div class="def">利率市場的「恐慌指數」(VIX 的債券版),衡量利率波動。</div></div>
+  <div><div class="term">VIX 指數</div><div class="def">股票市場的「恐慌指數」,衡量預期波動。</div></div>
+  <div><div class="term">NFCI / 壓力指數</div><div class="def">聯儲編製的金融鬆緊與系統壓力綜合指標,&gt;0=偏緊/壓力。</div></div>
+  <div><div class="term">ON RRP</div><div class="def">停在聯儲的隔夜現金「緩衝」;抽乾接近零代表流動性緩衝耗盡。</div></div>
+  <div><div class="term">廣義美元 <span class="en">Broad USD</span></div><div class="def">美元對一籃子貨幣的強弱;急升=全球流動性收緊。</div></div>
+</div>
+</div>
+
+<footer>
+資料來源:Federal Reserve Economic Data (FRED)、ICE BofA OAS、Chicago Fed NFCI、MOVE/標普(Yahoo Finance)。<br>
+本文件僅供研究參考與客戶說明用途,非投資建議。風險體制判斷有長且不固定的領先時滯。
+</footer>
+
+</body>
+</html>

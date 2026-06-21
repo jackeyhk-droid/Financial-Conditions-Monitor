@@ -101,6 +101,13 @@ replaying a historical episode stays in sync across the whole dashboard. Charts 
   weeks and read the *acceleration* of momentum, not just the current point.
 - **Heatmapped %ile column** in the signal table (orientation-aware: green = benign, red = stress)
   for fast investment-committee scanning.
+- **"How to read" toggle (讀法)** — a header switch (default **off**, so the power view stays dense)
+  that reveals a **釋義 · 觀察 · 研判** (interpretation / observation / assessment) line on
+  every panel. Flip it on in an IC or client meeting; it persists across tabs. Content lives in the
+  `HELP` map in `index.html`.
+- A separate **`client-primer.html`** one-pager (plain language, bilingual, print-friendly → exports
+  to a clean white PDF) explains the dashboard for clients/LPs: the five things to look at first, a
+  traffic-light guide, the four regimes, an illustrated stress-event walkthrough, caveats, and a glossary.
 - Animated gradient title (respects `prefers-reduced-motion`).
 
 ### Composite gauge construction
