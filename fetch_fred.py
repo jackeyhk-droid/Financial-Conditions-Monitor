@@ -56,6 +56,7 @@ SERIES = {
     "RRPONTSYD":    ("ON RRP ($B)",  "隔夜逆回購餘額"),   # Fed ON RRP take-up, $B, daily
     "SOFR":         ("SOFR",         "SOFR擔保隔夜利率"),
     "EFFR":         ("EFFR",         "有效聯邦資金利率"),
+    "WRESBAL":      ("Reserves",     "準備金餘額"),         # reserve balances, weekly ($mn)
 }
 
 # yfinance-sourced series (no FRED equivalent / better coverage). ticker -> (key, en, tc)
@@ -200,6 +201,18 @@ def pct_rank(s):
     x = s.dropna()
     if len(x) < 60: return None
     return float((x <= x.iloc[-1]).mean()*100)
+def pct_rank_window(s, n):
+    x = s.dropna().iloc[-n:]
+    if len(x) < 30: return None
+    return float((x <= x.iloc[-1]).mean()*100)
+# robust normalization: median/MAD, winsorized — far less sensitive to COVID-type outliers
+def robust_zseries(s, clip=3.5):
+    x = s.dropna()
+    if len(x) < 60: return s*0
+    med = x.median(); mad = (x - med).abs().median()
+    scale = 1.4826*mad if mad>0 else (x.std() or 1.0)
+    z = (s - med)/scale
+    return z.clip(-clip, clip)
 
 # ------------------------------------------------------------------ composite risk score
 # Each component z-scored & oriented so (+) = tighter / more risk-off / more stress.
@@ -242,6 +255,83 @@ def to_gauge(z):
 gauge_series = comp_series.apply(lambda v: to_gauge(v) if pd.notna(v) else np.nan) if comp_series is not None else None
 composite_z_last = last(comp_series) if comp_series is not None else None
 gauge_last = to_gauge(composite_z_last)
+
+# ------------------------------------------------------------------ point-in-time (expanding-window) gauge — for the backtest only
+# At each date t the z-scores use ONLY data up to t (no look-ahead). The live/current gauge above is full-sample
+# (which equals the expanding value at the latest point anyway); this PIT series is what makes the backtest honest.
+def expanding_z(s, minp=252):
+    m = s.expanding(min_periods=minp).mean(); sd = s.expanding(min_periods=minp).std()
+    return (s - m) / sd.replace(0, np.nan)
+pit_parts = []
+def pit_add(raw, w): pit_parts.append((expanding_z(raw), w))
+if have("BAMLH0A0HYM2"):
+    pit_add(ff["BAMLH0A0HYM2"], 0.18); pit_add(ff["BAMLH0A0HYM2"].diff(21), 0.18)
+if have("VIXCLS"): pit_add(ff["VIXCLS"], 0.12)
+if have("MOVE"):   pit_add(ff["MOVE"], 0.12)
+if have("NFCI"):   pit_add(ff["NFCI"], 0.14)
+if have("T10Y3M"): pit_add(-ff["T10Y3M"], 0.09)
+if have("DFII10"): pit_add(ff["DFII10"].diff(21), 0.09)
+if have("DISP"):   pit_add(ff["DISP"], 0.08)
+gauge_series_pit = None
+if pit_parts:
+    wsp = sum(w for _, w in pit_parts) or 1.0
+    comp_pit = None
+    for z, w in pit_parts:
+        c = z * (w / wsp); comp_pit = c if comp_pit is None else comp_pit.add(c, fill_value=0)
+    gauge_series_pit = comp_pit.apply(lambda v: to_gauge(v) if pd.notna(v) else np.nan)
+
+# ------------------------------------------------------------------ four pillar scores (robust median/MAD → sigmoid 0-100)
+# Risk is split by TYPE so a single normal composite can't mask one extreme pillar.
+def sigmoid01(z): return float(100.0/(1.0+np.exp(-0.9*z)))
+pillar_specs = {
+  "stress":    ("系統性壓力", "Systemic Stress", [
+      ("BAMLH0A0HYM2",+1,"HY OAS"),("BAMLH0A3HYC",+1,"CCC OAS"),("DISP",+1,"CCC-BB 離散度"),
+      ("VIXCLS",+1,"VIX"),("NFCI",+1,"NFCI"),("STLFSI4",+1,"StL 壓力")]),
+  "duration":  ("存續期與估值", "Duration & Valuation", [
+      ("DFII10",+1,"10Y 實質"),("DFII5",+1,"5Y 實質"),("THREEFYTP10",+1,"期限溢酬"),
+      ("MOVE",+1,"MOVE"),("DTWEXBGS",+1,"廣義美元")]),
+  "cycle":     ("週期與衰退", "Cycle & Recession", [
+      ("T10Y3M",-1,"曲線倒掛 3M10Y"),("__HYMOM__",+1,"信用動能 3M")]),
+  "liquidity": ("流動性與資金", "Liquidity & Funding", [
+      ("SOFREFFR",+1,"SOFR−EFFR"),("WRESBAL",-1,"準備金")]),
+}
+deriv_members = {}
+if have("BAMLH0A0HYM2"): deriv_members["__HYMOM__"] = ff["BAMLH0A0HYM2"].diff(63)
+pillars = {}; pillar_score_series = {}
+for pk,(tc,en,members) in pillar_specs.items():
+    zsers=[]; comps=[]
+    for (mid, sign, mtc) in members:
+        src = deriv_members.get(mid) if mid.startswith("__") else (ff[mid] if mid in ff.columns else None)
+        if src is None: continue
+        zs = robust_zseries(src)*sign
+        zsers.append(zs); zl=last(zs)
+        comps.append({"id":mid,"tc":mtc,"z":(round(zl,2) if zl is not None else None)})
+    if not zsers: continue
+    raw = pd.concat(zsers, axis=1).mean(axis=1)
+    score = raw.apply(lambda v: sigmoid01(v) if pd.notna(v) else np.nan)
+    sl = last(score); sdrop = score.dropna()
+    ago = lambda n: (round(float(sdrop.iloc[-1-n]),1) if len(sdrop)>n else None)
+    csorted = sorted([c for c in comps if c["z"] is not None], key=lambda c:c["z"], reverse=True)
+    pillars[pk] = {"tc":tc,"en":en,
+        "score":(round(sl,1) if sl is not None else None),
+        "wow":(round(sl-ago(5),1)  if sl is not None and ago(5)  is not None else None),
+        "mom":(round(sl-ago(21),1) if sl is not None and ago(21) is not None else None),
+        "z":(round(last(raw),2) if last(raw) is not None else None),
+        "top":csorted[:2], "offset":csorted[-2:][::-1], "components":comps}
+    pillar_score_series[pk] = score.reindex(frame.index)
+print("Pillars: " + " | ".join(f"{k}={v['score']}" for k,v in pillars.items()))
+
+# ------------------------------------------------------------------ data health (per-series freshness)
+_olast = frame.index.max()
+_health = []
+for cid in frame.columns:
+    s = frame[cid].dropna()
+    if len(s)==0: _health.append({"id":cid,"last":None,"days":None}); continue
+    ld = s.index.max(); _health.append({"id":cid,"last":ld.strftime("%Y-%m-%d"),"days":int((_olast-ld).days)})
+_stale = [h for h in _health if h["days"] is not None and h["days"]>10]
+data_health = {"as_of":_olast.strftime("%Y-%m-%d"), "series_count":len(frame.columns),
+    "stale_count":len(_stale), "stale":sorted(_stale,key=lambda h:-h["days"])[:8],
+    "worst_lag":(max((h["days"] for h in _health if h["days"] is not None), default=None))}
 
 # ------------------------------------------------------------------ regime (2x2)
 # X = curve direction = 63d change in 2s10s (>0 steepening, <0 flattening)
@@ -305,6 +395,68 @@ if spread2s10s is not None:
               "status_en": status_en, "status_tc": status_tc,
               "last_flip": last_flip_date.strftime("%Y-%m-%d")}
 
+# ------------------------------------------------------------------ curve state machine (richer than "inverted = stress")
+curve_state = None
+sp_3m10y = ff["T10Y3M"] if have("T10Y3M") else None
+if spread2s10s is not None:
+    s2 = spread2s10s.dropna(); cur2 = float(s2.iloc[-1])
+    s3 = sp_3m10y.dropna() if sp_3m10y is not None else None
+    cur3 = float(s3.iloc[-1]) if s3 is not None and len(s3) else None
+    primary = s3 if (s3 is not None and len(s3)) else s2     # 3M10Y preferred for recession framing
+    inv_now = float(primary.iloc[-1]) < 0
+    def inv_run_days(series):                                # calendar days of the current sub-zero run
+        v = series.values
+        if v[-1] >= 0: return 0
+        i = len(v)-1
+        while i >= 0 and v[i] < 0: i -= 1
+        return int((series.index[-1] - series.index[i+1]).days)
+    def days_since_disinv(series):                           # if positive now, days since last neg→pos cross
+        v = series.values
+        if v[-1] < 0: return None
+        for i in range(len(v)-1, -1, -1):
+            if v[i] < 0: return int((series.index[-1] - series.index[i]).days)
+        return None
+    dinv = inv_run_days(primary); dsd = days_since_disinv(primary)
+    depth_bps = round(-float(primary.iloc[-1])*100, 0) if inv_now else 0
+    # bull/bear shape over 21d, decomposed by which leg moved
+    shape = "stable"; d2 = d10 = None
+    if have("DGS2","DGS10"):
+        d2 = chg(ff["DGS2"],21); d10 = chg(ff["DGS10"],21)
+        if d2 is not None and d10 is not None:
+            ds = d10 - d2; eps = 0.05; dom_long = abs(d10) >= abs(d2)
+            if ds > eps:
+                shape = "bear_steepener" if (dom_long and d10>0) else ("bull_steepener" if ((not dom_long) and d2<0) else "steepening")
+            elif ds < -eps:
+                shape = "bull_flattener" if (dom_long and d10<0) else ("bear_flattener" if ((not dom_long) and d2>0) else "flattening")
+    # credit confirmation (HY OAS 3M direction)
+    hy_chg = chg(ff["BAMLH0A0HYM2"],63) if have("BAMLH0A0HYM2") else None
+    credit_confirm = "neutral"
+    if hy_chg is not None:
+        credit_confirm = "confirming" if hy_chg > 0.10 else ("not_confirming" if hy_chg < -0.10 else "neutral")
+    # state synthesis + warning
+    warning = None
+    if inv_now and dinv >= 60:
+        state_key="deep_inversion"; warning="deep_inversion"
+        state_tc=f"深度倒掛 約 {int(depth_bps)}bps,已 {dinv} 日"; state_en=f"Deeply inverted ~{int(depth_bps)}bps, {dinv}d"
+    elif inv_now:
+        state_key="inverted"; state_tc=f"倒掛 約 {int(depth_bps)}bps（{dinv} 日)"; state_en=f"Inverted ~{int(depth_bps)}bps ({dinv}d)"
+    elif (dsd is not None) and dsd <= 90:
+        state_key="recent_disinversion"; warning="dis_inversion"
+        state_tc=f"近期倒掛修復(距今 {dsd} 日)—— 歷史衰退時點警訊"; state_en=f"Recent dis-inversion ({dsd}d ago) — recession-timing warning"
+    else:
+        lbl={"bull_steepener":"正斜率 · 牛市趨陡(前端下行)","bear_steepener":"正斜率 · 熊市趨陡(長端上行)",
+             "bull_flattener":"正斜率 · 牛市趨平(長端下行 · 成長疑慮)","bear_flattener":"正斜率 · 熊市趨平(前端上行 · 鷹派)",
+             "steepening":"正斜率 · 趨陡","flattening":"正斜率 · 趨平","stable":"正斜率 · 平穩"}
+        state_key="positive_"+shape; state_tc=lbl.get(shape,"正斜率 · 平穩"); state_en="Positive — "+shape.replace("_"," ")
+    c1=chg(spread2s10s,21); c3=chg(spread2s10s,63)
+    curve_state={"spread_2s10s":round(cur2,3),"spread_3m10y":(round(cur3,3) if cur3 is not None else None),
+        "inverted":inv_now,"depth_bps":depth_bps,"days_inverted":dinv,"days_since_disinv":dsd,
+        "chg_2s10s_1m":(round(c1,3) if c1 is not None else None),"chg_2s10s_3m":(round(c3,3) if c3 is not None else None),
+        "d2y_1m":(round(d2,3) if d2 is not None else None),"d10y_1m":(round(d10,3) if d10 is not None else None),
+        "shape":shape,"credit_confirm":credit_confirm,
+        "state_key":state_key,"state_tc":state_tc,"state_en":state_en,"warning":warning}
+    print(f"Curve state: {state_en} | shape={shape} | credit={credit_confirm}")
+
 # ------------------------------------------------------------------ per-series summary
 def jround(v, n=4):
     if v is None or (isinstance(v,float) and (math.isnan(v) or math.isinf(v))): return None
@@ -366,6 +518,97 @@ if gauge_series is not None:
     series_out["GAUGE"] = [jround(v,2) for v in gauge_series.reindex(frame.index).tolist()]
 if comp_series is not None:
     series_out["COMPZ"] = [jround(v,3) for v in comp_series.reindex(frame.index).tolist()]
+for pk, ser in pillar_score_series.items():
+    series_out["P_"+pk] = [jround(v,1) for v in ser.tolist()]
+
+# ------------------------------------------------------------------ model validation (in-sample, descriptive)
+# Does the signal actually line up with subsequent S&P outcomes? Reuses the displayed regime logic.
+model_validation = None
+if gauge_series is not None and have("SP500"):
+    spx = ff["SP500"].dropna()
+    g   = (gauge_series_pit if gauge_series_pit is not None else gauge_series).reindex(spx.index)   # point-in-time gauge
+    HZ  = {"1M":21, "3M":63, "6M":126}
+    def fwd_ret(h): return spx.shift(-h)/spx - 1.0
+    def fwd_mae(h):                                   # worst level below entry within next h days (max adverse excursion)
+        rmin = spx[::-1].rolling(h, min_periods=max(3,h//3)).min()[::-1]
+        return rmin/spx - 1.0
+    fr = {k: fwd_ret(h) for k,h in HZ.items()}
+    fm = {k: fwd_mae(h) for k,h in HZ.items()}
+    def stats_block(mask):
+        out={}
+        for k in HZ:
+            r = fr[k][mask].dropna(); m = fm[k][mask].dropna()
+            out[k] = {"n": int(min(len(r),len(m))),
+                "ret_mean": jround(float(r.mean())*100,1) if len(r) else None,
+                "ret_med":  jround(float(r.median())*100,1) if len(r) else None,
+                "pos":      jround(float((r>0).mean())*100,0) if len(r) else None,
+                "mae_mean": jround(float(m.mean())*100,1) if len(m) else None,
+                "mae_p05":  jround(float(m.quantile(0.05))*100,1) if len(m) else None}
+        return out
+    allmask = pd.Series(True, index=spx.index)
+    baseline = stats_block(allmask)
+    # gauge quintiles (equal-count)
+    gq = g.dropna(); qc = gq.quantile([0,.2,.4,.6,.8,1.0]).values
+    gauge_buckets=[]
+    for i in range(5):
+        lo,hi = float(qc[i]), float(qc[i+1])
+        mask = ((g>=lo)&(g<hi)) if i<4 else ((g>=lo)&(g<=hi))
+        gauge_buckets.append({"q":i+1, "lo":jround(lo,1), "hi":jround(hi,1), "stats":stats_block(mask.fillna(False))})
+    # regime daily classification (consistent with displayed regime), forward stats
+    cxr = cx.reindex(spx.index); cyr = cy.reindex(spx.index)
+    reg_daily = pd.Series(index=spx.index, dtype=object)
+    for idx in spx.index:
+        xv, yv = cxr.get(idx), cyr.get(idx)
+        if pd.notna(xv) and pd.notna(yv): reg_daily[idx] = classify(float(xv), float(yv))[0]
+    regime_stats={}
+    for rk in ["reflation","goldilocks","late_cycle","risk_off","transition"]:
+        mask=(reg_daily==rk)
+        if int(mask.sum())>=20: regime_stats[rk]={"n":int(mask.sum()),"stats":stats_block(mask)}
+    # predictor comparison — Spearman IC vs forward 3M outcomes + top-quintile hit rate
+    def spear(a,b):
+        j=pd.concat([a,b],axis=1).dropna()
+        return float(j.iloc[:,0].corr(j.iloc[:,1],method="spearman")) if len(j)>=60 else None
+    preds={"綜合儀表 Composite": g}
+    if have("NFCI"): preds["NFCI"]=ff["NFCI"].reindex(spx.index)
+    if have("STLFSI4"): preds["StL FSI"]=ff["STLFSI4"].reindex(spx.index)
+    if have("BAMLH0A0HYM2"): preds["HY OAS"]=ff["BAMLH0A0HYM2"].reindex(spx.index)
+    ev=(fm["3M"]<-0.05); base_rate=float(ev.reindex(spx.index).dropna().mean())
+    pred_rows=[]
+    for nm,sv in preds.items():
+        thr=sv.dropna().quantile(0.8); sig=(sv>=thr)
+        jj=pd.concat([sig.rename("s"),ev.rename("e")],axis=1).dropna()
+        hit=float(jj[jj.s].e.mean()) if int(jj.s.sum())>0 else None
+        pred_rows.append({"name":nm,
+            "ic_mae": jround(spear(sv,fm["3M"]),2), "ic_ret": jround(spear(sv,fr["3M"]),2),
+            "hit": (jround(hit*100,0) if hit is not None else None)})
+    rd=reg_daily.dropna(); switches=int((rd!=rd.shift()).sum()-1) if len(rd)>1 else 0
+    yrs=max(1e-9,(spx.index[-1]-spx.index[0]).days/365.25)
+    # ---- walk-forward / out-of-sample: does the (point-in-time) gauge→outcome relationship hold on held-out data? ----
+    gv = g.dropna()
+    def ic_block(idx):
+        a=g.reindex(idx); 
+        return {"n":int(min(a.notna().sum(), fr["3M"].reindex(idx).notna().sum())),
+                "ic_ret":jround(spear(a, fr["3M"].reindex(idx)),2),
+                "ic_mae":jround(spear(a, fm["3M"].reindex(idx)),2)}
+    walk_forward=None
+    if len(gv) > 400:
+        mid = gv.index[len(gv)//2]
+        tr_idx = spx.index[spx.index <  mid]; te_idx = spx.index[spx.index >= mid]
+        walk_forward={"split_date":mid.strftime("%Y-%m-%d"),
+            "train":{**ic_block(tr_idx),"span":[tr_idx[0].strftime("%Y-%m-%d"),tr_idx[-1].strftime("%Y-%m-%d")]},
+            "test": {**ic_block(te_idx),"span":[te_idx[0].strftime("%Y-%m-%d"),te_idx[-1].strftime("%Y-%m-%d")]}}
+    ic_by_year=[]
+    for yr in sorted(set(spx.index.year)):
+        yidx = spx.index[spx.index.year==yr]
+        blk = ic_block(yidx)
+        if blk["n"] >= 60: ic_by_year.append({"year":int(yr), **blk})
+    model_validation={"baseline":baseline,"gauge_buckets":gauge_buckets,"regime_stats":regime_stats,
+        "predictors":pred_rows,"event_def":"未來3個月最大不利位移 < −5%","base_rate":jround(base_rate*100,0),
+        "switches_per_yr":jround(switches/yrs,1),"n_obs":int(len(gv)),"pit":(gauge_series_pit is not None),
+        "walk_forward":walk_forward,"ic_by_year":ic_by_year,
+        "span":[gv.index[0].strftime("%Y-%m-%d"),gv.index[-1].strftime("%Y-%m-%d")]}
+    print("Model validation: PIT gauge | walk-forward train/test IC_ret = " +
+          (f"{walk_forward['train']['ic_ret']} / {walk_forward['test']['ic_ret']}" if walk_forward else "n/a"))
 
 labels = {}
 for cid in frame.columns:
@@ -378,6 +621,55 @@ labels["BFLY"]     = {"en":"2s5s10s Butterfly","tc":"2-5-10蝴蝶"}
 labels["DISP"]     = {"en":"CCC-BB Dispersion","tc":"CCC-BB離散度"}
 labels["SOFREFFR"] = {"en":"SOFR − EFFR (bps)","tc":"SOFR減EFFR利差"}
 labels["EXPRATE"]  = {"en":"10Y Exp. Rate Path","tc":"10年預期利率路徑"}
+
+# ------------------------------------------------------------------ cross-run alert state (persisted first-triggered dates)
+# Evaluates the same breakage conditions as the dashboard, then reads/updates alert_state.json so each run knows
+# how long a condition has truly been active across cron runs (New / Ongoing) — not just re-derived from one snapshot.
+STATE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "alert_state.json")
+as_of_str = frame.index.max().strftime("%Y-%m-%d")
+def _lastpct(cid): return pct_rank(ff[cid]) if cid in ff.columns else None
+def _wk_surge(cid, n=5, thr=20.0):
+    s = ff[cid].dropna() if cid in ff.columns else None
+    if s is None or len(s) <= n: return False
+    a, b = s.iloc[-1], s.iloc[-1-n]; return (b > 0) and ((a-b)/b*100 > thr)
+active_keys = set()
+def _flag(key, cond):
+    if cond: active_keys.add(key)
+_cs = curve_state
+_flag("curve_disinv", bool(_cs and _cs.get("warning") == "dis_inversion"))
+_flag("curve_deepinv", bool(_cs and _cs.get("warning") == "deep_inversion"))
+_flag("move_surge", _wk_surge("MOVE", 5, 20))
+_flag("vix_surge", _wk_surge("VIXCLS", 5, 30))
+_flag("gauge_stress", (gauge_last is not None and gauge_last >= 70))
+_flag("gauge_tight", (gauge_last is not None and 58 <= gauge_last < 70))
+_flag("disp_extreme", (_lastpct("DISP") or 0) > 90)
+if "THREEFYTP10" in ff.columns:
+    _tpl, _tpc = last(ff["THREEFYTP10"]), chg(ff["THREEFYTP10"], 63)
+    _flag("termprem", (_tpl is not None and _tpc is not None and _tpl > 0.5 and _tpc > 0.3))
+if "DTWEXBGS" in ff.columns:
+    _d3, _d1 = chg(ff["DTWEXBGS"], 63), chg(ff["DTWEXBGS"], 21)
+    _flag("dollar", (_d3 is not None and _d1 is not None and _d3 > 3 and _d1 > 0))
+_flag("rrp", ("RRPONTSYD" in ff.columns and last(ff["RRPONTSYD"]) is not None and last(ff["RRPONTSYD"]) < 50))
+_flag("repo", ("SOFREFFR" in ff.columns and last(ff["SOFREFFR"]) is not None and last(ff["SOFREFFR"]) >= 10))
+_old_state = {}
+try:
+    if os.path.exists(STATE_PATH): _old_state = json.load(open(STATE_PATH))
+except Exception: _old_state = {}
+_new_state, _active_out, _resolved = {}, {}, []
+for k in active_keys:
+    prev = _old_state.get(k)
+    fs = (prev.get("first_seen") if isinstance(prev, dict) else prev) or as_of_str
+    _new_state[k] = {"first_seen": fs, "last_seen": as_of_str}
+    days = (pd.Timestamp(as_of_str) - pd.Timestamp(fs)).days
+    _active_out[k] = {"first_seen": fs, "days": int(days), "status": ("new" if days <= 7 else "ongoing")}
+for k, prev in _old_state.items():            # conditions that were active last run but cleared this run
+    if k not in active_keys:
+        fs = (prev.get("first_seen") if isinstance(prev, dict) else prev)
+        _resolved.append({"key": k, "first_seen": fs, "resolved": as_of_str})
+try: json.dump(_new_state, open(STATE_PATH, "w"), indent=0, ensure_ascii=False)
+except Exception as e: print("alert_state write failed:", e)
+alerts_state = {"as_of": as_of_str, "active": _active_out, "resolved": _resolved}
+print("Alert state:", {k: v["days"] for k, v in _active_out.items()} or "none")
 
 out = {
     "generated_utc": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
@@ -398,6 +690,11 @@ out = {
     "regime": regime,
     "regime_trail": regime_trail,
     "disinversion": disinv,
+    "curve_state": curve_state,
+    "pillars": pillars,
+    "data_health": data_health,
+    "model_validation": model_validation,
+    "alerts_state": alerts_state,
 }
 
 with open(OUT, "w") as f:

@@ -16,13 +16,36 @@ self-contained HTML, Bloomberg-dark, bilingual TC/EN, SHA-256 gate.
 | File | Purpose |
 |---|---|
 | `index.html` | The dashboard. Loads `./data.json` at runtime; falls back to an embedded seed if absent. |
-| `fetch_fred.py` | Pulls ~28 FRED series + MOVE/S&P (yfinance), computes spreads / z-scores / regime / composite, writes `data.json`. |
+| `fetch_fred.py` | Pulls ~29 FRED series + MOVE/S&P (yfinance), computes spreads / z-scores / regime / composite **+ four robust Pillar Scores + curve state machine + point-in-time backtest + per-series data-health + cross-run alert state**, writes `data.json` (and `alert_state.json`). |
 | `data.json` | Seed data (committed so the dashboard renders immediately). Overwritten by the Action. |
-| `.github/workflows/update-fred-data.yml` | Weekday cron that refreshes `data.json`. |
+| `alert_state.json` | Persisted first-triggered dates for alerts (auto-created/updated by the Action; gives accurate New/Ongoing across runs). |
+| `middleware.js` | **(optional)** Vercel Edge Middleware — real server-side password gate (set `SITE_PASSWORD` env var). Protects everything including `data.json`. |
+| `.github/workflows/update-fred-data.yml` | Weekday cron that refreshes `data.json` + `alert_state.json`. |
 
 ---
 
-## Setup
+## Institutional layer (v3)
+
+The Overview is **summary-first** — it answers "what's happening / better or worse than last week / where's the biggest risk / what to do" before any chart:
+
+- **Today's IC Read** — regime + 8-week persistence + drift direction, composite + WoW, main pressure / main offset (from the pillars), and a rule-based portfolio posture line.
+- **Four Pillar Scores** — risk is split by *type* so a normal-looking composite can't mask one extreme pillar: **Systemic Stress · Duration & Valuation · Cycle & Recession · Liquidity & Funding**. Each is a **robust median/MAD (winsorized) z-score** of its members → sigmoid → 0–100, with WoW and top drivers. (This is what surfaces *Duration pressure 63* while the blended composite reads a calm 44.)
+- **Risk-aware Δ colours** — change cells are coloured by whether the move **raised or lowered risk**, not by mathematical sign (HY OAS −0.23 = 🟢 risk-down; CCC-BB dispersion +0.07 = 🔴 risk-up; curve spreads neutral).
+- **Level / Trend split** — every signal shows two independent labels: oriented **percentile** (極端/偏高/中性/偏低) *and* oriented **3-month momentum** (惡化/改善/持平). Fixes the "10Y real at the 98th percentile but green" contradiction.
+- **Data Health** — header chip shows freshness; if `data.json` fails to load and the embedded seed is used, a **red cached-snapshot banner** appears so a stale fallback is never mistaken for live data.
+- **Display-gate honesty** — the passcode is labelled in-product as a display gate, not a server-side access boundary.
+
+- **Yield-curve state machine** — not just "inverted = stress": classifies inversion **depth + days**, **recent dis-inversion** (the re-steepening recession-timing warning), and **bull-vs-bear steepener/flattener** (which leg moved — front-end vs long-end), each **cross-checked against credit** (is HY OAS confirming?). Surfaced as a panel on the Yield Curve tab and as alerts.
+- **Alerts with status + confirmation + implication** — each banner carries **New / Ongoing + duration**, a **cross-confirmation** tag (e.g. *ON RRP depleted — Ongoing, Not confirmed*: low RRP alone isn't funding stress unless SOFR/reserves/credit confirm), severity ordering, and a one-line **portfolio posture**.
+- **Model Validation tab** — **point-in-time** backtest (expanding-window normalization, 252-day burn-in, *no look-ahead in the signal*): gauge-quintile and per-regime **forward S&P return + max-adverse-excursion**, a **predictor comparison** (composite vs NFCI vs StL FSI vs HY OAS) by Spearman IC and top-quintile hit rate, plus a **walk-forward / out-of-sample** split (train vs test IC) and **year-by-year IC**. **Honest headline:** the composite is a *coincident* stress/regime classifier, **not** a forward-return predictor — extreme readings were contrarian, and the gauge↔drawdown relationship **flips sign between train (−0.23) and test (+0.11)** and year-to-year, i.e. it does not survive out-of-sample. The dashboard's edge is structural decomposition, not market timing.
+- **Cross-run alert state** — `fetch_fred.py` persists first-triggered dates in `alert_state.json` (committed by the Action), so banners show accurate **New / Ongoing + duration across runs**, not just re-derived from one snapshot.
+- **Server-side auth (optional)** — `middleware.js` (Vercel Edge) enforces a password at the edge before any file is served, including `data.json`. Set `SITE_PASSWORD`; works inside the Squarespace iframe (`SameSite=None; Secure`). The in-page passcode remains as a lightweight second layer.
+
+> **Threshold note:** because the backtest shows no stable predictive relationship, the gauge bands (30 / 50 / 70) are deliberately **descriptive** (stress level), not calibrated-predictive thresholds — calibrating a "drawdown threshold" would be overfitting a relationship the out-of-sample test rejects.
+
+> **Genuinely out of scope here (would need new data/infra, not this repo):** cross-asset stress inputs that aren't on free FRED (CDX, cross-currency basis, SOFR-OIS); a longer multi-cycle sample for stronger out-of-sample power; and SSO/identity-provider auth beyond the password gate.
+
+
 
 ### 1. FRED API key (reuse your existing secret)
 The script prefers the official FRED API when `FRED_API_KEY` is set, and **honors
