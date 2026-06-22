@@ -311,15 +311,30 @@ for pk,(tc,en,members) in pillar_specs.items():
     score = raw.apply(lambda v: sigmoid01(v) if pd.notna(v) else np.nan)
     sl = last(score); sdrop = score.dropna()
     ago = lambda n: (round(float(sdrop.iloc[-1-n]),1) if len(sdrop)>n else None)
-    csorted = sorted([c for c in comps if c["z"] is not None], key=lambda c:c["z"], reverse=True)
+    # signed POINT contribution per component: local sigmoid slope × (z_i / n). Sums ≈ score − 50, stable at raw≈0.
+    n_comp = len([c for c in comps if c["z"] is not None]) or 1
+    slope = 0.9 * (sl if sl is not None else 50) * (100 - (sl if sl is not None else 50)) / 100.0
+    for c in comps:
+        c["pts"] = (round(slope * (c["z"]/n_comp), 1) if c["z"] is not None else None)
+    withpts = [c for c in comps if c.get("pts") is not None]
+    pressure = sorted([c for c in withpts if c["pts"]>0], key=lambda c:c["pts"], reverse=True)
+    offset   = sorted([c for c in withpts if c["pts"]<0], key=lambda c:c["pts"])
+    csorted  = sorted(withpts, key=lambda c:c["z"], reverse=True)
+    # dampened WoW (5-day median now vs 5d ago) so a single repo/quarter-end spike can't swing the pillar 20+ pts
+    med5 = score.rolling(5, min_periods=3).median().dropna()
+    wow_damp = (round(float(med5.iloc[-1]-med5.iloc[-6]),1) if len(med5)>6 else None)
     pillars[pk] = {"tc":tc,"en":en,
         "score":(round(sl,1) if sl is not None else None),
+        "score_med5":(round(float(med5.iloc[-1]),1) if len(med5) else None),
         "wow":(round(sl-ago(5),1)  if sl is not None and ago(5)  is not None else None),
+        "wow_damp":wow_damp,
         "mom":(round(sl-ago(21),1) if sl is not None and ago(21) is not None else None),
         "z":(round(last(raw),2) if last(raw) is not None else None),
+        "coverage":n_comp,
+        "pressure":pressure[:2], "offset_d":offset[:2],
         "top":csorted[:2], "offset":csorted[-2:][::-1], "components":comps}
     pillar_score_series[pk] = score.reindex(frame.index)
-print("Pillars: " + " | ".join(f"{k}={v['score']}" for k,v in pillars.items()))
+print("Pillars: " + " | ".join(f"{k}={v['score']}(cov{v['coverage']})" for k,v in pillars.items()))
 
 # ------------------------------------------------------------------ data health (per-series freshness)
 _olast = frame.index.max()
@@ -361,11 +376,14 @@ if spread2s10s is not None and hy is not None:
               "y": (round(y_now,3) if y_now is not None else None),
               "key": qk, "tc": qtc, "curve_state": cs, "credit_state": kr,
               "dx": dx, "dy": dy}
-    # weekly trail, last 26 weeks
+    # weekly trail, last 26 weeks. W-FRI labels the (possibly incomplete) current week by its coming Friday,
+    # which can read as a future date — clamp every label to the actual last observation date.
     j = pd.concat([cx.rename("x"), cy.rename("y")], axis=1).dropna()
+    _last_obs = j.index.max()
     j = j.resample("W-FRI").last().dropna().tail(26)
     for ts, row in j.iterrows():
-        regime_trail.append([ts.strftime("%Y-%m-%d"), round(float(row["x"]),3), round(float(row["y"]),3)])
+        dlabel = min(ts, _last_obs)
+        regime_trail.append([dlabel.strftime("%Y-%m-%d"), round(float(row["x"]),3), round(float(row["y"]),3)])
 
 # ------------------------------------------------------------------ dis-inversion tracker (2s10s)
 disinv = None
@@ -545,8 +563,8 @@ if gauge_series is not None and have("SP500"):
                 "mae_mean": jround(float(m.mean())*100,1) if len(m) else None,
                 "mae_p05":  jround(float(m.quantile(0.05))*100,1) if len(m) else None}
         return out
-    allmask = pd.Series(True, index=spx.index)
-    baseline = stats_block(allmask)
+    gmask = g.notna()                                  # common eligible universe: PIT gauge exists at t
+    baseline = stats_block(gmask)                      # baseline now on the SAME sample as the quintiles (N matches Σ buckets)
     # gauge quintiles (equal-count)
     gq = g.dropna(); qc = gq.quantile([0,.2,.4,.6,.8,1.0]).values
     gauge_buckets=[]
@@ -564,7 +582,7 @@ if gauge_series is not None and have("SP500"):
     for rk in ["reflation","goldilocks","late_cycle","risk_off","transition"]:
         mask=(reg_daily==rk)
         if int(mask.sum())>=20: regime_stats[rk]={"n":int(mask.sum()),"stats":stats_block(mask)}
-    # predictor comparison — Spearman IC vs forward 3M outcomes + top-quintile hit rate
+    # predictor comparison — Spearman IC vs forward 3M outcomes + top-quintile hit rate, ALL on the eligible sample
     def spear(a,b):
         j=pd.concat([a,b],axis=1).dropna()
         if len(j)<60: return None
@@ -573,43 +591,74 @@ if gauge_series is not None and have("SP500"):
     if have("NFCI"): preds["NFCI"]=ff["NFCI"].reindex(spx.index)
     if have("STLFSI4"): preds["StL FSI"]=ff["STLFSI4"].reindex(spx.index)
     if have("BAMLH0A0HYM2"): preds["HY OAS"]=ff["BAMLH0A0HYM2"].reindex(spx.index)
-    ev=(fm["3M"]<-0.05); base_rate=float(ev.reindex(spx.index).dropna().mean())
+    ev=(fm["3M"]<-0.05)
+    base_rate=float(ev[gmask].dropna().mean())          # event rate on the eligible sample
     pred_rows=[]
     for nm,sv in preds.items():
-        thr=sv.dropna().quantile(0.8); sig=(sv>=thr)
-        jj=pd.concat([sig.rename("s"),ev.rename("e")],axis=1).dropna()
+        sve=sv[gmask]                                   # compare every predictor on the SAME eligible dates
+        thr=sve.dropna().quantile(0.8); sig=(sve>=thr)
+        jj=pd.concat([sig.rename("s"),ev[gmask].rename("e")],axis=1).dropna()
         hit=float(jj[jj.s].e.mean()) if int(jj.s.sum())>0 else None
         pred_rows.append({"name":nm,
-            "ic_mae": jround(spear(sv,fm["3M"]),2), "ic_ret": jround(spear(sv,fr["3M"]),2),
+            "ic_mae": jround(spear(sve,fm["3M"][gmask]),2), "ic_ret": jround(spear(sve,fr["3M"][gmask]),2),
             "hit": (jround(hit*100,0) if hit is not None else None)})
     rd=reg_daily.dropna(); switches=int((rd!=rd.shift()).sum()-1) if len(rd)>1 else 0
     yrs=max(1e-9,(spx.index[-1]-spx.index[0]).days/365.25)
-    # ---- walk-forward / out-of-sample: does the (point-in-time) gauge→outcome relationship hold on held-out data? ----
-    gv = g.dropna()
+    # ---- non-overlapping (every 63 trading days ≈ independent 3M blocks) robustness check ----
+    def spear_n(a,b,minn):
+        j=pd.concat([a,b],axis=1).dropna()
+        if len(j)<minn: return None
+        return float(j.iloc[:,0].rank().corr(j.iloc[:,1].rank()))
+    gne = g.dropna().iloc[::63]
+    nonoverlap={"n":int(gne.shape[0]),
+        "ic_ret":jround(spear_n(gne, fr["3M"].reindex(gne.index), 24),2),
+        "ic_mae":jround(spear_n(gne, fm["3M"].reindex(gne.index), 24),2)}
+    # ---- walk-forward (rolling-origin): expanding train, test on each subsequent year ----
     def ic_block(idx):
-        a=g.reindex(idx); 
+        a=g.reindex(idx)
         return {"n":int(min(a.notna().sum(), fr["3M"].reindex(idx).notna().sum())),
                 "ic_ret":jround(spear(a, fr["3M"].reindex(idx)),2),
                 "ic_mae":jround(spear(a, fm["3M"].reindex(idx)),2)}
+    def _median(xs):
+        ys=sorted(v for v in xs if v is not None)
+        if not ys: return None
+        mid=len(ys)//2
+        return jround(ys[mid] if len(ys)%2 else (ys[mid-1]+ys[mid])/2, 2)
+    gv = g.dropna(); years=sorted(set(gv.index.year)); y0=years[0]
+    folds=[]
+    for ty in years:
+        if ty - y0 < 2: continue                        # need ≥2y of expanding training history before a test year
+        blk = ic_block(spx.index[spx.index.year==ty])
+        if blk["n"]>=40:
+            folds.append({"test_year":int(ty),"train_through":int(ty-1),"n":blk["n"],
+                          "ic_ret":blk["ic_ret"],"ic_mae":blk["ic_mae"]})
     walk_forward=None
-    if len(gv) > 400:
-        mid = gv.index[len(gv)//2]
-        tr_idx = spx.index[spx.index <  mid]; te_idx = spx.index[spx.index >= mid]
-        walk_forward={"split_date":mid.strftime("%Y-%m-%d"),
-            "train":{**ic_block(tr_idx),"span":[tr_idx[0].strftime("%Y-%m-%d"),tr_idx[-1].strftime("%Y-%m-%d")]},
-            "test": {**ic_block(te_idx),"span":[te_idx[0].strftime("%Y-%m-%d"),te_idx[-1].strftime("%Y-%m-%d")]}}
+    if folds:
+        nret=[f["ic_ret"] for f in folds if f["ic_ret"] is not None]
+        nmae=[f["ic_mae"] for f in folds if f["ic_mae"] is not None]
+        walk_forward={"folds":folds,"n_folds":len(folds),
+            "median_ic_ret":_median(nret),"median_ic_mae":_median(nmae),
+            "ret_pos_share": (jround(sum(1 for x in nret if x>0)/len(nret)*100,0) if nret else None),
+            "mae_neg_share": (jround(sum(1 for x in nmae if x<0)/len(nmae)*100,0) if nmae else None),
+            "worst_ret": (jround(min(nret),2) if nret else None),
+            "worst_mae": (jround(max(nmae),2) if nmae else None)}   # most-positive MAE-IC = weakest downside-warning fold
+    last_year=max(set(spx.index.year))
     ic_by_year=[]
     for yr in sorted(set(spx.index.year)):
-        yidx = spx.index[spx.index.year==yr]
-        blk = ic_block(yidx)
-        if blk["n"] >= 60: ic_by_year.append({"year":int(yr), **blk})
+        blk = ic_block(spx.index[spx.index.year==yr])
+        if blk["n"] >= 40: ic_by_year.append({"year":int(yr), "partial":(yr==last_year), **blk})
+    credit_start=None
+    if "BAMLH0A0HYM2" in ff.columns and ff["BAMLH0A0HYM2"].dropna().shape[0]:
+        credit_start=ff["BAMLH0A0HYM2"].dropna().index.min().strftime("%Y-%m-%d")
     model_validation={"baseline":baseline,"gauge_buckets":gauge_buckets,"regime_stats":regime_stats,
         "predictors":pred_rows,"event_def":"未來3個月最大不利位移 < −5%","base_rate":jround(base_rate*100,0),
-        "switches_per_yr":jround(switches/yrs,1),"n_obs":int(len(gv)),"pit":(gauge_series_pit is not None),
-        "walk_forward":walk_forward,"ic_by_year":ic_by_year,
+        "switches_per_yr":jround(switches/yrs,1),"n_obs":int(gv.shape[0]),"pit":(gauge_series_pit is not None),
+        "walk_forward":walk_forward,"nonoverlap":nonoverlap,"ic_by_year":ic_by_year,"credit_start":credit_start,
         "span":[gv.index[0].strftime("%Y-%m-%d"),gv.index[-1].strftime("%Y-%m-%d")]}
-    print("Model validation: PIT gauge | walk-forward train/test IC_ret = " +
-          (f"{walk_forward['train']['ic_ret']} / {walk_forward['test']['ic_ret']}" if walk_forward else "n/a"))
+    print("Model validation: rolling-origin folds=%d | median test IC ret/mae=%s/%s | baseline 3M N=%s (Σbuckets=%s)"%(
+        len(folds), walk_forward["median_ic_ret"] if walk_forward else "—",
+        walk_forward["median_ic_mae"] if walk_forward else "—",
+        baseline["3M"]["n"], sum(b["stats"]["3M"]["n"] for b in gauge_buckets)))
 
 labels = {}
 for cid in frame.columns:
