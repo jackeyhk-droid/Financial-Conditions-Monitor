@@ -567,7 +567,8 @@ if gauge_series is not None and have("SP500"):
     # predictor comparison — Spearman IC vs forward 3M outcomes + top-quintile hit rate
     def spear(a,b):
         j=pd.concat([a,b],axis=1).dropna()
-        return float(j.iloc[:,0].corr(j.iloc[:,1],method="spearman")) if len(j)>=60 else None
+        if len(j)<60: return None
+        return float(j.iloc[:,0].rank().corr(j.iloc[:,1].rank()))   # Spearman = Pearson of ranks (no scipy dependency)
     preds={"綜合儀表 Composite": g}
     if have("NFCI"): preds["NFCI"]=ff["NFCI"].reindex(spx.index)
     if have("STLFSI4"): preds["StL FSI"]=ff["STLFSI4"].reindex(spx.index)
