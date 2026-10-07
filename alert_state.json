@@ -1,14 +1,18 @@
 {
-"gauge_tight": {
-"first_seen": "2026-09-30",
-"last_seen": "2026-10-06"
+"rrp": {
+"first_seen": "2026-06-22",
+"last_seen": "2026-10-07"
 },
 "disp_extreme": {
 "first_seen": "2026-06-22",
-"last_seen": "2026-10-06"
+"last_seen": "2026-10-07"
 },
-"rrp": {
-"first_seen": "2026-06-22",
-"last_seen": "2026-10-06"
+"gauge_tight": {
+"first_seen": "2026-09-30",
+"last_seen": "2026-10-07"
+},
+"termprem": {
+"first_seen": "2026-10-07",
+"last_seen": "2026-10-07"
 }
 }
