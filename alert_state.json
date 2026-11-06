@@ -1,14 +1,10 @@
 {
 "rrp": {
 "first_seen": "2026-06-22",
-"last_seen": "2026-11-05"
-},
-"gauge_tight": {
-"first_seen": "2026-11-03",
-"last_seen": "2026-11-05"
+"last_seen": "2026-11-06"
 },
 "disp_extreme": {
 "first_seen": "2026-06-22",
-"last_seen": "2026-11-05"
+"last_seen": "2026-11-06"
 }
 }
