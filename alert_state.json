@@ -1,9 +1,17 @@
 {
-"rrp": {
-"first_seen": "2026-06-22",
+"gauge_tight": {
+"first_seen": "2026-11-06",
 "last_seen": "2026-11-06"
 },
 "disp_extreme": {
+"first_seen": "2026-06-22",
+"last_seen": "2026-11-06"
+},
+"vix_surge": {
+"first_seen": "2026-11-06",
+"last_seen": "2026-11-06"
+},
+"rrp": {
 "first_seen": "2026-06-22",
 "last_seen": "2026-11-06"
 }
