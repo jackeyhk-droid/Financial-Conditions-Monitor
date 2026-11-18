@@ -1,14 +1,22 @@
 {
-"disp_extreme": {
+"rrp": {
 "first_seen": "2026-06-22",
-"last_seen": "2026-11-17"
+"last_seen": "2026-11-18"
 },
 "dollar": {
 "first_seen": "2026-11-17",
-"last_seen": "2026-11-17"
+"last_seen": "2026-11-18"
 },
-"rrp": {
+"vix_surge": {
+"first_seen": "2026-11-18",
+"last_seen": "2026-11-18"
+},
+"disp_extreme": {
 "first_seen": "2026-06-22",
-"last_seen": "2026-11-17"
+"last_seen": "2026-11-18"
+},
+"gauge_tight": {
+"first_seen": "2026-11-18",
+"last_seen": "2026-11-18"
 }
 }
